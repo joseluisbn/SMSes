@@ -2,16 +2,44 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
-// Abstract memory and I/O bus interface.
-// The concrete implementation lives in bus.cpp (Phase 3 — Memory).
-// CPU, VDP, and PSG receive a Bus& injected by the system.
+#include "memory/mapper.h"
+#include "io/io.h"
+
+class VDP;
+class PSG;
+
+// ── System bus ────────────────────────────────────────────────────────────────
+//
+// Central hub that owns Mapper and IO and routes all CPU memory / I/O
+// accesses to the correct subsystem.  VDP and PSG are held by reference;
+// they must outlive this Bus instance.
+//
 class Bus {
 public:
-    virtual ~Bus() = default;
+    Bus(VDP& vdp, PSG& psg);
 
-    virtual uint8_t read(uint16_t addr)               = 0;
-    virtual void    write(uint16_t addr, uint8_t val) = 0;
-    virtual uint8_t ioRead(uint8_t port)              = 0;
-    virtual void    ioWrite(uint8_t port, uint8_t val) = 0;
+    // ── CPU memory interface ──────────────────────────────────────────────────
+    uint8_t read(uint16_t addr);
+    void    write(uint16_t addr, uint8_t val);
+
+    // ── CPU I/O interface ─────────────────────────────────────────────────────
+    uint8_t ioRead(uint8_t port);
+    void    ioWrite(uint8_t port, uint8_t val);
+
+    // ── ROM management ────────────────────────────────────────────────────────
+    bool loadROM(const std::vector<uint8_t>& data);
+    bool isROMLoaded() const;
+
+    void reset();
+
+    // ── Debugger accessors ────────────────────────────────────────────────────
+    const Mapper& getMapper() const;
+    const IO&     getIO()     const;
+
+private:
+    Mapper mapper;
+    IO     io;
+    bool   romLoaded = false;
 };

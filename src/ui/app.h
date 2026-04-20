@@ -4,6 +4,9 @@
 #include "ui/menubar.h"
 #include "ui/screen.h"
 #include <SDL3/SDL.h>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 class App {
 public:
@@ -17,9 +20,13 @@ private:
     void render();
     void handleMenuActions();
 
-    SDL_Window*   window   = nullptr;
-    SDL_Renderer* renderer = nullptr;
-    bool          running  = false;
-    Screen        screen;
-    Menubar       menubar;
+    void loadROMFromFile(const std::string& path);
+
+    SDL_Window*            window    = nullptr;
+    SDL_Renderer*          renderer  = nullptr;
+    bool                   running   = false;
+    Screen                 screen;
+    Menubar                menubar;
+    std::vector<uint8_t>   romData;
+    bool                   romLoaded = false;
 };

@@ -5,6 +5,8 @@
 #include <imgui_impl_sdlrenderer3.h>
 #include <SDL3/SDL.h>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 
 bool App::init(const char* title, int width, int height) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS))
@@ -38,10 +40,21 @@ void App::processEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);
-        if (event.type == SDL_EVENT_QUIT)
-            running = false;
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
-            running = false;
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
+                running = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                if (event.key.key == SDLK_ESCAPE)
+                    running = false;
+                break;
+            case SDL_EVENT_DROP_FILE:
+                if (event.drop.data)
+                    loadROMFromFile(event.drop.data);
+                break;
+            default:
+                break;
+        }
     }
 }
 
@@ -59,7 +72,7 @@ void App::handleMenuActions() {
     if (menubar.popScale3x())
         screen.setScale(3.0f);
     if (menubar.popOpenRom())
-        std::fprintf(stderr, "Open ROM: not implemented yet\n");
+        std::fprintf(stderr, "Open ROM dialog: not implemented — drop a .sms file onto the window\n");
     if (menubar.popReset())
         std::fprintf(stderr, "Reset: not implemented yet\n");
 }
@@ -78,6 +91,25 @@ void App::render() {
     SDL_RenderClear(renderer);
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
     SDL_RenderPresent(renderer);
+}
+
+void App::loadROMFromFile(const std::string& path) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        std::fprintf(stderr, "ROM load failed: cannot open '%s'\n", path.c_str());
+        return;
+    }
+    const auto size = file.tellg();
+    file.seekg(0);
+    romData.resize(static_cast<std::size_t>(size));
+    file.read(reinterpret_cast<char*>(romData.data()), size);
+    romLoaded = true;
+    std::fprintf(stderr, "ROM loaded: %s (%lld bytes)\n", path.c_str(),
+                 static_cast<long long>(size));
+    // Update window title with the ROM filename
+    const std::string filename =
+        std::filesystem::path(path).filename().string();
+    SDL_SetWindowTitle(window, ("SMS Emulator \u2014 " + filename).c_str());
 }
 
 void App::run() {
