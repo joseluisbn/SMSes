@@ -30,6 +30,17 @@ void Menubar::draw() {
 
         if (ImGui::MenuItem("Reset"))
             actionReset = true;
+
+        ImGui::Separator();
+        ImGui::Text("Region:");
+        if (ImGui::MenuItem("NTSC (60Hz)", nullptr, selectedRegion == Region::NTSC)) {
+            selectedRegion   = Region::NTSC;
+            actionRegionNTSC = true;
+        }
+        if (ImGui::MenuItem("PAL  (50Hz)", nullptr, selectedRegion == Region::PAL)) {
+            selectedRegion  = Region::PAL;
+            actionRegionPAL = true;
+        }
         ImGui::EndMenu();
     }
 
@@ -72,3 +83,7 @@ bool Menubar::popExit()    { bool v = actionExit;    actionExit    = false; retu
 bool Menubar::popScale1x() { bool v = actionScale1x; actionScale1x = false; return v; }
 bool Menubar::popScale2x() { bool v = actionScale2x; actionScale2x = false; return v; }
 bool Menubar::popScale3x() { bool v = actionScale3x; actionScale3x = false; return v; }
+bool Menubar::popRegionNTSC() { bool v = actionRegionNTSC; actionRegionNTSC = false; return v; }
+bool Menubar::popRegionPAL()  { bool v = actionRegionPAL;  actionRegionPAL  = false; return v; }
+
+Region Menubar::getSelectedRegion() const { return selectedRegion; }

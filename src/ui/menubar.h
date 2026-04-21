@@ -1,6 +1,8 @@
 // src/ui/menubar.h
 #pragma once
 
+#include "vdp/vdp.h"
+
 class Menubar {
 public:
     void draw();
@@ -19,8 +21,11 @@ public:
     bool popScale1x();
     bool popScale2x();
     bool popScale3x();
+    bool popRegionNTSC();
+    bool popRegionPAL();
 
-    bool getIsPaused() const;
+    bool         getIsPaused()        const;
+    Region       getSelectedRegion()  const;
 
 private:
     // Debug panels visibility toggles
@@ -34,10 +39,15 @@ private:
     bool isPaused = false;
 
     // Pending actions (set true for one frame, App reads and clears them)
-    bool actionOpenRom = false;
-    bool actionReset   = false;
-    bool actionExit    = false;
-    bool actionScale1x = false;
-    bool actionScale2x = false;
-    bool actionScale3x = false;
+    bool actionOpenRom    = false;
+    bool actionReset      = false;
+    bool actionExit       = false;
+    bool actionScale1x    = false;
+    bool actionScale2x    = false;
+    bool actionScale3x    = false;
+    bool actionRegionNTSC = false;
+    bool actionRegionPAL  = false;
+
+    // Region selection
+    Region selectedRegion = Region::NTSC;
 };

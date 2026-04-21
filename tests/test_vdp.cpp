@@ -84,9 +84,60 @@ TEST_F(VDPTest, vcounter_wraps_after_line_DA)
 
 TEST_F(VDPTest, pollFrameReady_true_once_per_frame)
 {
-    // Tick a full frame
-    vdp.tick(VDP::LINES_PER_FRAME * VDP::CYCLES_PER_LINE);
+    // Tick a full frame (NTSC by default)
+    vdp.tick(vdp.getLinesPerFrame() * VDP::CYCLES_PER_LINE);
 
     EXPECT_TRUE(vdp.pollFrameReady());
     EXPECT_FALSE(vdp.pollFrameReady());  // flag clears after first poll
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAL timing tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_F(VDPTest, PAL_frame_has_313_lines)
+{
+    vdp.setRegion(Region::PAL);
+    EXPECT_EQ(vdp.getLinesPerFrame(), 313);
+}
+
+TEST_F(VDPTest, PAL_vcounter_wraps_at_F2)
+{
+    vdp.setRegion(Region::PAL);
+    // Tick to line 0xF3 (243 decimal)
+    vdp.tick(0xF3 * VDP::CYCLES_PER_LINE);
+    // VCounter = 0xF3 - 57 = 0xBA
+    EXPECT_EQ(vdp.getVCounter(), 0xBA);
+}
+
+TEST_F(VDPTest, PAL_vblank_still_at_line_192)
+{
+    vdp.setRegion(Region::PAL);
+    // Enable frame IRQ: R1 bit 5
+    vdp.writeControl(0x20);
+    vdp.writeControl(0x81);   // code = 10, R1 = 0x20
+
+    // VBlank fires when advanceLine() runs with currentLine == 192
+    vdp.tick(193 * VDP::CYCLES_PER_LINE);
+
+    EXPECT_TRUE(vdp.getIRQ());
+}
+
+TEST_F(VDPTest, PAL_frame_ready_after_313_lines)
+{
+    vdp.setRegion(Region::PAL);
+    vdp.tick(313 * VDP::CYCLES_PER_LINE);
+    EXPECT_TRUE(vdp.pollFrameReady());
+}
+
+TEST_F(VDPTest, NTSC_clock_hz_correct)
+{
+    vdp.setRegion(Region::NTSC);
+    EXPECT_NEAR(vdp.getClockHz(), 3579545.0, 1.0);
+}
+
+TEST_F(VDPTest, PAL_clock_hz_correct)
+{
+    vdp.setRegion(Region::PAL);
+    EXPECT_NEAR(vdp.getClockHz(), 3546895.0, 1.0);
 }

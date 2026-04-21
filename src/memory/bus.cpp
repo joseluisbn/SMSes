@@ -30,6 +30,10 @@ bool Bus::isROMLoaded() const {
     return romLoaded;
 }
 
+Mapper::DetectedRegion Bus::detectRegion() const {
+    return mapper.detectRegion();
+}
+
 void Bus::reset() {
     // mapper.reset() restores default bank registers but preserves ROM data.
     // romLoaded is intentionally kept — a hardware reset does not eject the cartridge.

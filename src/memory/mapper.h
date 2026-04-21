@@ -12,9 +12,11 @@ public:
     static constexpr uint16_t RAM_SIZE      = 0x2000;  //  8 KB system RAM
     static constexpr uint8_t  MAX_ROM_PAGES = 64;      // 512 KB max (64 × 16 KB)
 
-    // Load ROM data. Validates size, initialises page mapping.
-    // Returns false if data is invalid.
-    bool loadROM(const std::vector<uint8_t>& data);
+    // -------------------------------------------------------------------------
+    // Region auto-detection from the SMS ROM header at 0x7FF0–0x7FFF.
+    // -------------------------------------------------------------------------
+    enum class DetectedRegion { NTSC, PAL, Unknown };
+    DetectedRegion detectRegion() const;
 
     // Reset mapper registers to power-on defaults (slot0=0, slot1=1, slot2=2).
     void reset();

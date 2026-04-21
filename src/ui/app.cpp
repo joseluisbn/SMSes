@@ -75,6 +75,14 @@ void App::handleMenuActions() {
         std::fprintf(stderr, "Open ROM dialog: not implemented — drop a .sms file onto the window\n");
     if (menubar.popReset())
         std::fprintf(stderr, "Reset: not implemented yet\n");
+    if (menubar.popRegionNTSC()) {
+        currentRegion = Region::NTSC;
+        SDL_SetWindowTitle(window, buildTitle().c_str());
+    }
+    if (menubar.popRegionPAL()) {
+        currentRegion = Region::PAL;
+        SDL_SetWindowTitle(window, buildTitle().c_str());
+    }
 }
 
 void App::render() {
@@ -103,13 +111,37 @@ void App::loadROMFromFile(const std::string& path) {
     file.seekg(0);
     romData.resize(static_cast<std::size_t>(size));
     file.read(reinterpret_cast<char*>(romData.data()), size);
-    romLoaded = true;
+    romLoaded   = true;
+    romFilename = std::filesystem::path(path).filename().string();
     std::fprintf(stderr, "ROM loaded: %s (%lld bytes)\n", path.c_str(),
                  static_cast<long long>(size));
-    // Update window title with the ROM filename
-    const std::string filename =
-        std::filesystem::path(path).filename().string();
-    SDL_SetWindowTitle(window, ("SMS Emulator \u2014 " + filename).c_str());
+
+    // Auto-detect region from ROM header.
+    // Bus is not yet available in Phase 4, so we scan romData directly
+    // using the same logic as Mapper::detectRegion().
+    auto detectRegion = [&]() -> Region {
+        if (romData.size() < 0x8000) return Region::NTSC;
+        const char magic[8] = {'T','M','R',' ','S','E','G','A'};
+        for (int i = 0; i < 8; i++)
+            if (romData[0x7FF0 + i] != static_cast<uint8_t>(magic[i]))
+                return Region::NTSC;
+        const uint8_t code = (romData[0x7FFF] >> 4) & 0x0Fu;
+        // codes 3 (SMS Japan) and 5 (GG Japan) → NTSC; all others → PAL
+        return (code == 3 || code == 5) ? Region::NTSC : Region::PAL;
+    };
+
+    currentRegion = detectRegion();
+
+    const char* regionStr = (currentRegion == Region::PAL) ? "PAL" : "NTSC";
+    SDL_SetWindowTitle(window, buildTitle().c_str());
+    std::fprintf(stderr, "Detected region: %s\n", regionStr);
+}
+
+std::string App::buildTitle() const {
+    const char* regionTag = (currentRegion == Region::PAL) ? " [PAL]" : " [NTSC]";
+    if (romLoaded && !romFilename.empty())
+        return "SMS Emulator — " + romFilename + regionTag;
+    return "SMS Emulator";
 }
 
 void App::run() {

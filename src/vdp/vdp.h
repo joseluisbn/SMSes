@@ -6,17 +6,27 @@
 
 class Bus;
 
+// ---------------------------------------------------------------------------
+// Region selection — controls frame length, clock frequency, and VCounter
+// ---------------------------------------------------------------------------
+enum class Region { NTSC, PAL };
+
 class VDP {
 public:
     // -------------------------------------------------------------------------
     // Timing constants
     // -------------------------------------------------------------------------
-    static constexpr int SCREEN_WIDTH        = 256;
-    static constexpr int SCREEN_HEIGHT       = 192;
-    static constexpr int LINES_PER_FRAME     = 262;  // NTSC (PAL = 313)
-    static constexpr int CYCLES_PER_LINE     = 228;  // CPU cycles per scanline
-    static constexpr int VBLANK_START_LINE   = 192;
-    static constexpr int ACTIVE_DISPLAY_AREA = 192;
+    static constexpr int    SCREEN_WIDTH        = 256;
+    static constexpr int    SCREEN_HEIGHT       = 192;
+    static constexpr int    CYCLES_PER_LINE     = 228;   // CPU cycles per scanline (both regions)
+    static constexpr int    VBLANK_START_LINE   = 192;
+    static constexpr int    ACTIVE_DISPLAY_AREA = 192;
+
+    static constexpr int    NTSC_LINES          = 262;
+    static constexpr int    PAL_LINES           = 313;
+
+    static constexpr double NTSC_CLOCK_HZ       = 3579545.0;  // ~3.58 MHz
+    static constexpr double PAL_CLOCK_HZ        = 3546895.0;  // ~3.55 MHz
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -25,6 +35,14 @@ public:
 
     void reset();
     void tick(int cpuCycles);   // advance VDP state by cpuCycles
+
+    // -------------------------------------------------------------------------
+    // Region
+    // -------------------------------------------------------------------------
+    void     setRegion(Region r);
+    Region   getRegion()       const;
+    int      getLinesPerFrame() const;
+    double   getClockHz()      const;
 
     // -------------------------------------------------------------------------
     // IRQ
@@ -43,6 +61,21 @@ public:
     // -------------------------------------------------------------------------
     // Counter reads (I/O ports 0x40 / 0x41)
     // -------------------------------------------------------------------------
+    //
+    // VCounter tables (from Sega Master System Technical Reference):
+    //
+    // NTSC (262 lines):
+    //   Scanlines 0x00–0xDA (0–218)   → VCounter = line
+    //   Scanlines 0xDB–0xFF (219–261) → VCounter = line - 6
+    //   (0xDB maps to 0xD5, continues down to 0xFF→0xF9)
+    //
+    // PAL (313 lines):
+    //   Scanlines 0x00–0xF2 (0–242)   → VCounter = line
+    //   Scanlines 0xF3–0xFF (243–255) → VCounter = line - 57   (0xF3→0xBA)
+    //   Scanlines 0x100–0x138 (256–312) wrap: VCounter continues 0xBA→0xFF
+    //   i.e. for line >= 256: VCounter = line - 256 + 0xBA
+    //        combined formula: VCounter = (line - 57) & 0xFF  for line >= 0xF3
+    //
     uint8_t getVCounter() const;
     uint8_t getHCounter() const;
 
@@ -100,9 +133,16 @@ private:
     uint8_t vScroll      = 0;   // vertical scroll latched at frame start
 
     // -------------------------------------------------------------------------
+    // Region
+    // -------------------------------------------------------------------------
+    Region region       = Region::NTSC;
+    int    linesPerFrame = NTSC_LINES;  // updated by setRegion()
+
+    // -------------------------------------------------------------------------
     // Framebuffer
     // -------------------------------------------------------------------------
-    std::array<uint32_t, SCREEN_WIDTH * LINES_PER_FRAME> framebuffer {};
+    // Sized for PAL (largest frame) so no reallocation is needed on region switch.
+    std::array<uint32_t, SCREEN_WIDTH * PAL_LINES> framebuffer {};
     bool frameReady = false;
 
     // Per-scanline background color index (used by sprite priority logic)

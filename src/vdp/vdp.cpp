@@ -114,13 +114,47 @@ void VDP::writeControl(uint8_t val)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Region
+// ─────────────────────────────────────────────────────────────────────────────
+
+void VDP::setRegion(Region r)
+{
+    region       = r;
+    linesPerFrame = (r == Region::PAL) ? PAL_LINES : NTSC_LINES;
+}
+
+Region VDP::getRegion() const
+{
+    return region;
+}
+
+int VDP::getLinesPerFrame() const
+{
+    return linesPerFrame;
+}
+
+double VDP::getClockHz() const
+{
+    return (region == Region::PAL) ? PAL_CLOCK_HZ : NTSC_CLOCK_HZ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Counter reads
 // ─────────────────────────────────────────────────────────────────────────────
 
 uint8_t VDP::getVCounter() const
 {
-    // NTSC: lines 0x00–0xDA are returned directly.
-    // Lines 0xDB–0xFF wrap back by 6 to fit the 8-bit counter range.
+    if (region == Region::PAL) {
+        // PAL: 0x00–0xF2 returned as-is.
+        // 0xF3 onward: subtract 57 (0x39) and mask to 8 bits.
+        // This maps 0xF3→0xBA, and lines 256–312 continue from 0xBAℲ0xFF.
+        if (currentLine <= 0xF2) {
+            return static_cast<uint8_t>(currentLine);
+        }
+        return static_cast<uint8_t>((currentLine - 57) & 0xFF);
+    }
+
+    // NTSC: 0x00–0xDA returned as-is; 0xDB–0xFF subtract 6.
     if (currentLine <= 0xDA) {
         return static_cast<uint8_t>(currentLine);
     }
@@ -217,7 +251,7 @@ void VDP::advanceLine()
     }
 
     currentLine++;
-    if (currentLine >= LINES_PER_FRAME) {
+    if (currentLine >= linesPerFrame) {
         currentLine = 0;
     }
 }

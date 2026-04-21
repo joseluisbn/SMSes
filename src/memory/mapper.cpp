@@ -3,6 +3,42 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+
+// ── detectRegion() ────────────────────────────────────────────────────────────
+//
+// Reads the SMS ROM header at 0x7FF0–0x7FFF.
+// Magic string "TMR SEGA" must be present at 0x7FF0.
+// Region/size byte is at 0x7FFF: bits 7–4 = region code.
+//
+//   3 = SMS Japan      → NTSC
+//   4 = SMS Export     → PAL  (Europe dominant)
+//   5 = GG Japan       → NTSC
+//   6 = GG Export      → PAL
+//   7 = GG International → PAL
+//
+Mapper::DetectedRegion Mapper::detectRegion() const
+{
+    constexpr std::size_t HEADER_OFFSET = 0x7FF0;
+    constexpr std::size_t HEADER_MIN_ROM = 0x8000;
+
+    if (rom.size() < HEADER_MIN_ROM)
+        return DetectedRegion::Unknown;
+
+    static constexpr char MAGIC[8] = {'T','M','R',' ','S','E','G','A'};
+    if (std::memcmp(&rom[HEADER_OFFSET], MAGIC, 8) != 0)
+        return DetectedRegion::Unknown;
+
+    const uint8_t regionCode = (rom[0x7FFFu] >> 4) & 0x0Fu;
+    switch (regionCode) {
+        case 3: return DetectedRegion::NTSC;  // SMS Japan
+        case 4: return DetectedRegion::PAL;   // SMS Export
+        case 5: return DetectedRegion::NTSC;  // GG Japan
+        case 6: return DetectedRegion::PAL;   // GG Export
+        case 7: return DetectedRegion::PAL;   // GG International
+        default: return DetectedRegion::Unknown;
+    }
+}
 
 // ── loadROM() ────────────────────────────────────────────────────────────────
 bool Mapper::loadROM(const std::vector<uint8_t>& data) {

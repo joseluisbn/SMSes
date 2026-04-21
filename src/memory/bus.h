@@ -30,8 +30,7 @@ public:
 
     // ── ROM management ────────────────────────────────────────────────────────
     bool loadROM(const std::vector<uint8_t>& data);
-    bool isROMLoaded() const;
-
+    bool isROMLoaded() const;    Mapper::DetectedRegion detectRegion() const;
     void reset();
 
     // ── Debugger accessors ────────────────────────────────────────────────────

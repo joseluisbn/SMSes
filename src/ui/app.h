@@ -3,6 +3,7 @@
 
 #include "ui/menubar.h"
 #include "ui/screen.h"
+#include "vdp/vdp.h"
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <string>
@@ -21,12 +22,15 @@ private:
     void handleMenuActions();
 
     void loadROMFromFile(const std::string& path);
+    std::string buildTitle() const;
 
-    SDL_Window*            window    = nullptr;
-    SDL_Renderer*          renderer  = nullptr;
-    bool                   running   = false;
+    SDL_Window*            window        = nullptr;
+    SDL_Renderer*          renderer      = nullptr;
+    bool                   running       = false;
     Screen                 screen;
     Menubar                menubar;
     std::vector<uint8_t>   romData;
-    bool                   romLoaded = false;
+    bool                   romLoaded     = false;
+    Region                 currentRegion = Region::NTSC;
+    std::string            romFilename;  // set on load, used by buildTitle()
 };
