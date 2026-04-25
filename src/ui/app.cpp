@@ -4,6 +4,7 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
 #include <SDL3/SDL.h>
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +31,9 @@ bool App::init(const char* title, int width, int height) {
     ImGui_ImplSDLRenderer3_Init(renderer);
 
     if (!screen.init(renderer))
+        return false;
+
+    if (!initAudio())
         return false;
 
     running = true;
@@ -59,7 +63,15 @@ void App::processEvents() {
 }
 
 void App::update() {
-    // Empty for Phase 1. Will call sms.step() in future phases.
+    static std::array<float, AUDIO_BUFFER_SAMPLES * 2 * PSG::AUDIO_CHANNELS> audioBuffer;
+    const int samplesNeeded = static_cast<int>(
+        PSG::SAMPLE_RATE / (currentRegion == Region::NTSC ? 59.92 : 49.70));
+
+    psg.generateSamples(audioBuffer.data(), samplesNeeded);
+
+    if (audioStream)
+        SDL_PutAudioStreamData(audioStream, audioBuffer.data(),
+            samplesNeeded * PSG::AUDIO_CHANNELS * static_cast<int>(sizeof(float)));
 }
 
 void App::handleMenuActions() {
@@ -77,10 +89,12 @@ void App::handleMenuActions() {
         std::fprintf(stderr, "Reset: not implemented yet\n");
     if (menubar.popRegionNTSC()) {
         currentRegion = Region::NTSC;
+        psg.setClockHz(3579545.0);
         SDL_SetWindowTitle(window, buildTitle().c_str());
     }
     if (menubar.popRegionPAL()) {
         currentRegion = Region::PAL;
+        psg.setClockHz(3546895.0);
         SDL_SetWindowTitle(window, buildTitle().c_str());
     }
 }
@@ -131,6 +145,7 @@ void App::loadROMFromFile(const std::string& path) {
     };
 
     currentRegion = detectRegion();
+    psg.setClockHz(currentRegion == Region::PAL ? 3546895.0 : 3579545.0);
 
     const char* regionStr = (currentRegion == Region::PAL) ? "PAL" : "NTSC";
     SDL_SetWindowTitle(window, buildTitle().c_str());
@@ -152,7 +167,55 @@ void App::run() {
     }
 }
 
+bool App::initAudio()
+{
+    SDL_AudioSpec spec{};
+    spec.format   = SDL_AUDIO_F32;
+    spec.channels = PSG::AUDIO_CHANNELS;
+    spec.freq     = PSG::SAMPLE_RATE;
+
+    audioDevice = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec);
+    if (audioDevice == 0) {
+        std::fprintf(stderr, "SDL Audio error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    audioStream = SDL_CreateAudioStream(&spec, &spec);
+    if (!audioStream) {
+        SDL_CloseAudioDevice(audioDevice);
+        audioDevice = 0;
+        std::fprintf(stderr, "SDL AudioStream error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    if (!SDL_BindAudioStream(audioDevice, audioStream)) {
+        SDL_DestroyAudioStream(audioStream);
+        audioStream = nullptr;
+        SDL_CloseAudioDevice(audioDevice);
+        audioDevice = 0;
+        std::fprintf(stderr, "SDL BindAudioStream error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    SDL_ResumeAudioDevice(audioDevice);
+    psg.reset();
+    return true;
+}
+
+void App::shutdownAudio()
+{
+    if (audioDevice) {
+        SDL_CloseAudioDevice(audioDevice);
+        audioDevice = 0;
+    }
+    if (audioStream) {
+        SDL_DestroyAudioStream(audioStream);
+        audioStream = nullptr;
+    }
+}
+
 void App::shutdown() {
+    shutdownAudio();
     screen.shutdown();
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();

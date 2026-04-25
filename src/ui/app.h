@@ -1,6 +1,7 @@
 // src/ui/app.h
 #pragma once
 
+#include "psg/psg.h"
 #include "ui/menubar.h"
 #include "ui/screen.h"
 #include "vdp/vdp.h"
@@ -24,6 +25,9 @@ private:
     void loadROMFromFile(const std::string& path);
     std::string buildTitle() const;
 
+    bool initAudio();
+    void shutdownAudio();
+
     SDL_Window*            window        = nullptr;
     SDL_Renderer*          renderer      = nullptr;
     bool                   running       = false;
@@ -33,4 +37,9 @@ private:
     bool                   romLoaded     = false;
     Region                 currentRegion = Region::NTSC;
     std::string            romFilename;  // set on load, used by buildTitle()
+
+    static constexpr int   AUDIO_BUFFER_SAMPLES = 512;
+    SDL_AudioDeviceID      audioDevice  = 0;
+    SDL_AudioStream*       audioStream  = nullptr;
+    PSG                    psg;
 };
