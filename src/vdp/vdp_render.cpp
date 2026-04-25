@@ -1,6 +1,5 @@
 // src/vdp/vdp_render.cpp
 #include "vdp/vdp.h"
-#include "memory/bus.h"
 
 #include <algorithm>
 #include <vector>

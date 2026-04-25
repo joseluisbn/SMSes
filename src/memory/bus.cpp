@@ -44,6 +44,10 @@ const Mapper& Bus::getMapper() const {
     return mapper;
 }
 
+IO& Bus::getIO() {
+    return io;
+}
+
 const IO& Bus::getIO() const {
     return io;
 }

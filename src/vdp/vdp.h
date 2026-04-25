@@ -4,8 +4,6 @@
 #include <array>
 #include <cstdint>
 
-class Bus;
-
 // ---------------------------------------------------------------------------
 // Region selection — controls frame length, clock frequency, and VCounter
 // ---------------------------------------------------------------------------
@@ -31,7 +29,7 @@ public:
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
-    explicit VDP(Bus& bus);
+    VDP();
 
     void reset();
     void tick(int cpuCycles);   // advance VDP state by cpuCycles
@@ -94,8 +92,6 @@ public:
     int            getCurrentLine() const { return currentLine; }
 
 private:
-    Bus& bus;
-
     // -------------------------------------------------------------------------
     // Memory
     // -------------------------------------------------------------------------

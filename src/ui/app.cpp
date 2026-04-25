@@ -1,5 +1,7 @@
 // src/ui/app.cpp
 #include "ui/app.h"
+#include "io/io.h"
+#include "psg/psg.h"
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
@@ -8,6 +10,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+
+App::App()
+    : debugger(sms, menubar)
+{}
 
 bool App::init(const char* title, int width, int height) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS))
@@ -41,6 +47,22 @@ bool App::init(const char* title, int width, int height) {
 }
 
 void App::processEvents() {
+    auto updateJoy = [&](SDL_Keycode key, bool pressed) {
+        uint8_t btn = 0;
+        switch (key) {
+            case SDLK_UP:    btn = JOY_UP;    break;
+            case SDLK_DOWN:  btn = JOY_DOWN;  break;
+            case SDLK_LEFT:  btn = JOY_LEFT;  break;
+            case SDLK_RIGHT: btn = JOY_RIGHT; break;
+            case SDLK_Z:     btn = JOY_FIRE1; break;
+            case SDLK_X:     btn = JOY_FIRE2; break;
+            default: break;
+        }
+        if (pressed)  joypad1State |= btn;
+        else          joypad1State &= static_cast<uint8_t>(~btn);
+        sms.setJoypad1(joypad1State);
+    };
+
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);
@@ -51,6 +73,11 @@ void App::processEvents() {
             case SDL_EVENT_KEY_DOWN:
                 if (event.key.key == SDLK_ESCAPE)
                     running = false;
+                else
+                    updateJoy(event.key.key, true);
+                break;
+            case SDL_EVENT_KEY_UP:
+                updateJoy(event.key.key, false);
                 break;
             case SDL_EVENT_DROP_FILE:
                 if (event.drop.data)
@@ -63,11 +90,39 @@ void App::processEvents() {
 }
 
 void App::update() {
-    static std::array<float, AUDIO_BUFFER_SAMPLES * 2 * PSG::AUDIO_CHANNELS> audioBuffer;
-    const int samplesNeeded = static_cast<int>(
-        PSG::SAMPLE_RATE / (currentRegion == Region::NTSC ? 59.92 : 49.70));
+    if (!sms.isROMLoaded()) return;
 
-    psg.generateSamples(audioBuffer.data(), samplesNeeded);
+    // Breakpoint check — halt before executing if PC hits an enabled BP
+    if (debugger.shouldBreak()) return;
+
+    // Step mode — execute exactly one instruction per button press
+    if (debugger.isStepMode()) {
+        if (debugger.popStep()) {
+            const int cycles = sms.getCPU().step();
+            sms.getVDP().tick(cycles);
+            if (sms.getVDP().getIRQ()) {
+                sms.getVDP().clearIRQ();
+                sms.getCPU().irq();
+            }
+            if (sms.getVDP().pollFrameReady())
+                screen.update(sms.getVDP().getFramebuffer());
+        }
+        return;
+    }
+
+    // Normal emulation: run one full frame
+    sms.runFrame();
+
+    // Push completed framebuffer to screen texture
+    if (sms.getVDP().pollFrameReady())
+        screen.update(sms.getVDP().getFramebuffer());
+
+    // Generate and queue audio for this frame
+    const int samplesNeeded = static_cast<int>(
+        PSG::SAMPLE_RATE / (sms.getRegion() == Region::NTSC ? 59.92 : 49.70));
+
+    static std::array<float, 1024 * PSG::AUDIO_CHANNELS> audioBuffer;
+    sms.fillAudio(audioBuffer.data(), samplesNeeded);
 
     if (audioStream)
         SDL_PutAudioStreamData(audioStream, audioBuffer.data(),
@@ -85,16 +140,16 @@ void App::handleMenuActions() {
         screen.setScale(3.0f);
     if (menubar.popOpenRom())
         std::fprintf(stderr, "Open ROM dialog: not implemented — drop a .sms file onto the window\n");
-    if (menubar.popReset())
-        std::fprintf(stderr, "Reset: not implemented yet\n");
+    if (menubar.popReset()) {
+        sms.reset();
+        SDL_SetWindowTitle(window, buildTitle().c_str());
+    }
     if (menubar.popRegionNTSC()) {
-        currentRegion = Region::NTSC;
-        psg.setClockHz(3579545.0);
+        sms.setRegion(Region::NTSC);
         SDL_SetWindowTitle(window, buildTitle().c_str());
     }
     if (menubar.popRegionPAL()) {
-        currentRegion = Region::PAL;
-        psg.setClockHz(3546895.0);
+        sms.setRegion(Region::PAL);
         SDL_SetWindowTitle(window, buildTitle().c_str());
     }
 }
@@ -107,6 +162,7 @@ void App::render() {
     menubar.draw();
     handleMenuActions();
     screen.draw();
+    debugger.draw();
 
     ImGui::Render();
     SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
@@ -123,38 +179,27 @@ void App::loadROMFromFile(const std::string& path) {
     }
     const auto size = file.tellg();
     file.seekg(0);
-    romData.resize(static_cast<std::size_t>(size));
+    std::vector<uint8_t> romData(static_cast<std::size_t>(size));
     file.read(reinterpret_cast<char*>(romData.data()), size);
-    romLoaded   = true;
-    romFilename = std::filesystem::path(path).filename().string();
+
     std::fprintf(stderr, "ROM loaded: %s (%lld bytes)\n", path.c_str(),
                  static_cast<long long>(size));
 
-    // Auto-detect region from ROM header.
-    // Bus is not yet available in Phase 4, so we scan romData directly
-    // using the same logic as Mapper::detectRegion().
-    auto detectRegion = [&]() -> Region {
-        if (romData.size() < 0x8000) return Region::NTSC;
-        const char magic[8] = {'T','M','R',' ','S','E','G','A'};
-        for (int i = 0; i < 8; i++)
-            if (romData[0x7FF0 + i] != static_cast<uint8_t>(magic[i]))
-                return Region::NTSC;
-        const uint8_t code = (romData[0x7FFF] >> 4) & 0x0Fu;
-        // codes 3 (SMS Japan) and 5 (GG Japan) → NTSC; all others → PAL
-        return (code == 3 || code == 5) ? Region::NTSC : Region::PAL;
-    };
+    if (!sms.loadROM(romData)) {
+        std::fprintf(stderr, "Failed to load ROM: invalid format\n");
+        return;
+    }
+    sms.reset();
 
-    currentRegion = detectRegion();
-    psg.setClockHz(currentRegion == Region::PAL ? 3546895.0 : 3579545.0);
-
-    const char* regionStr = (currentRegion == Region::PAL) ? "PAL" : "NTSC";
+    romFilename = std::filesystem::path(path).filename().string();
+    const char* regionStr = (sms.getRegion() == Region::PAL) ? "PAL" : "NTSC";
     SDL_SetWindowTitle(window, buildTitle().c_str());
     std::fprintf(stderr, "Detected region: %s\n", regionStr);
 }
 
 std::string App::buildTitle() const {
-    const char* regionTag = (currentRegion == Region::PAL) ? " [PAL]" : " [NTSC]";
-    if (romLoaded && !romFilename.empty())
+    const char* regionTag = (sms.getRegion() == Region::PAL) ? " [PAL]" : " [NTSC]";
+    if (sms.isROMLoaded() && !romFilename.empty())
         return "SMS Emulator — " + romFilename + regionTag;
     return "SMS Emulator";
 }
@@ -198,7 +243,6 @@ bool App::initAudio()
     }
 
     SDL_ResumeAudioDevice(audioDevice);
-    psg.reset();
     return true;
 }
 

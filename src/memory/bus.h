@@ -34,8 +34,7 @@ public:
     void reset();
 
     // ── Debugger accessors ────────────────────────────────────────────────────
-    const Mapper& getMapper() const;
-    const IO&     getIO()     const;
+    const Mapper& getMapper() const;    IO&           getIO();    const IO&     getIO()     const;
 
 private:
     Mapper mapper;

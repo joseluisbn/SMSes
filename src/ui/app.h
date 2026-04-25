@@ -1,10 +1,10 @@
 // src/ui/app.h
 #pragma once
 
-#include "psg/psg.h"
+#include "system/sms.h"
+#include "ui/debugger/debugger.h"
 #include "ui/menubar.h"
 #include "ui/screen.h"
-#include "vdp/vdp.h"
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <string>
@@ -12,9 +12,12 @@
 
 class App {
 public:
+    App();  // required: initializes debugger(sms, menubar)
     bool init(const char* title, int width, int height);
     void run();
     void shutdown();
+
+    Region getCurrentRegion() const { return sms.getRegion(); }
 
 private:
     void processEvents();
@@ -28,18 +31,23 @@ private:
     bool initAudio();
     void shutdownAudio();
 
-    SDL_Window*            window        = nullptr;
-    SDL_Renderer*          renderer      = nullptr;
-    bool                   running       = false;
-    Screen                 screen;
+    SDL_Window*            window       = nullptr;
+    SDL_Renderer*          renderer     = nullptr;
+    bool                   running      = false;
+
+    // Declaration order matters: sms and menubar must be constructed
+    // before debugger (which holds references to both).
+    SMS                    sms;
     Menubar                menubar;
-    std::vector<uint8_t>   romData;
-    bool                   romLoaded     = false;
-    Region                 currentRegion = Region::NTSC;
+    Screen                 screen;
+    Debugger               debugger;   // initialized via App() MIL
+
     std::string            romFilename;  // set on load, used by buildTitle()
+
+    uint8_t                joypad1State = 0;
+    uint8_t                joypad2State = 0;
 
     static constexpr int   AUDIO_BUFFER_SAMPLES = 512;
     SDL_AudioDeviceID      audioDevice  = 0;
     SDL_AudioStream*       audioStream  = nullptr;
-    PSG                    psg;
 };

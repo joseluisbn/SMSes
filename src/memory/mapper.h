@@ -25,7 +25,8 @@ public:
     void    write(uint16_t addr, uint8_t val);
 
     // Direct pointer to system RAM (used by Bus for the 0xC000–0xFFFF region).
-    uint8_t* getRamPtr() { return ram.data(); }
+    uint8_t*       getRamPtr()       { return ram.data(); }
+    const uint8_t* getRamPtr() const { return ram.data(); }
 
 private:
     std::vector<uint8_t>              rom;              // full ROM image
