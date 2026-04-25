@@ -4,8 +4,10 @@
 #include "cpu/z80.h"
 #include "memory/bus.h"
 #include "psg/psg.h"
+#include "system/save_state.h"
 #include "vdp/vdp.h"
 #include <cstdint>
+#include <string>
 #include <vector>
 
 class SMS {
@@ -24,6 +26,15 @@ public:
 
     // Audio: fill stereo float32 buffer for this frame
     void   fillAudio(float* buffer, int numSamples);
+
+    // Target frame rate for timing (NTSC: ~59.92 fps, PAL: ~49.70 fps)
+    double targetFPS() const;
+
+    // Save states
+    SaveState saveState()                         const;
+    bool      loadSaveState(const SaveState& s);
+    bool      saveToFile(const std::string& path) const;
+    bool      loadFromFile(const std::string& path);
 
     // Input
     void   setJoypad1(uint8_t state);
@@ -51,6 +62,9 @@ private:
     bool   paused         = false;
 
     int    cyclesPerFrame = 0;  // recomputed by computeCyclesPerFrame()
+
+    static constexpr int SAVE_SLOTS = 10;
+    int currentSlot = 0;
 
     void computeCyclesPerFrame();
     // NTSC: 262 lines * 228 cycles = 59736 cycles/frame

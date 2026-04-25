@@ -327,7 +327,7 @@ int Z80::executeMain(uint8_t opcode) {
         }
 
         case 0xF3: regs.IFF1 = regs.IFF2 = false; return 4;                   // DI
-        case 0xFB: regs.IFF1 = regs.IFF2 = true;  return 4;                   // EI
+        case 0xFB: regs.IFF1 = regs.IFF2 = true; regs.eiDelay = true; return 4; // EI
 
         case 0xEB: {                                                            // EX DE,HL
             uint16_t tmp = regs.DE;

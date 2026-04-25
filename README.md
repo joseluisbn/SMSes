@@ -12,7 +12,8 @@ A work-in-progress Sega Master System emulator written in C++23.
 | 4 | VDP (video display processor) | ✅ Done |
 | 5 | PSG (SN76489 sound) | ✅ Done |
 | 6 | System integration & ROM execution | ✅ Done |
-| 7 | Timing & Accuracy | ⏳ Planned |
+| 7 | Timing, Accuracy, Save States | ✅ Done |
+| 8 | Testing, bugfixes | ⏳ Planned |
 
 ## Features
 

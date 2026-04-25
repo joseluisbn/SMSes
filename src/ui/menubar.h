@@ -23,6 +23,10 @@ public:
     bool popScale3x();
     bool popRegionNTSC();
     bool popRegionPAL();
+    bool popTurbo();             // toggle turbo (uncapped) mode
+    bool popSaveState();
+    bool popLoadState();
+    int  getSelectedSlot() const;
 
     bool         getIsPaused()        const;
     Region       getSelectedRegion()  const;
@@ -47,6 +51,13 @@ private:
     bool actionScale3x    = false;
     bool actionRegionNTSC = false;
     bool actionRegionPAL  = false;
+    bool actionTurbo      = false;
+    bool turboEnabled     = false;
+    bool actionSaveState  = false;
+    bool actionLoadState  = false;
+
+    // Save state slot
+    int selectedSlot = 0;
 
     // Region selection
     Region selectedRegion = Region::NTSC;

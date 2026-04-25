@@ -13,11 +13,19 @@ void Bus::write(uint16_t addr, uint8_t val) {
 }
 
 uint8_t Bus::ioRead(uint8_t port) {
+    if ((port & 0xFE) == 0xBE) lastAccessWasVDP = true;
     return io.read(port);
 }
 
 void Bus::ioWrite(uint8_t port, uint8_t val) {
+    if ((port & 0xFE) == 0xBE) lastAccessWasVDP = true;
     io.write(port, val);
+}
+
+bool Bus::wasLastIOVDP() {
+    bool v = lastAccessWasVDP;
+    lastAccessWasVDP = false;
+    return v;
 }
 
 bool Bus::loadROM(const std::vector<uint8_t>& data) {

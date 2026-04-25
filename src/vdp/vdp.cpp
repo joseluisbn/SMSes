@@ -1,5 +1,6 @@
 // src/vdp/vdp.cpp
 #include "vdp/vdp.h"
+#include "system/save_state.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -162,8 +163,80 @@ uint8_t VDP::getVCounter() const
 
 uint8_t VDP::getHCounter() const
 {
-    // Simplified: full implementation requires cycle-accurate H counter.
-    return 0;
+    // Scale CPU cycle position (0–227) to H counter pixel-clock units (0–341).
+    // The H counter has a discontinuity: 0x00–0x93 direct, then jumps to 0xE9.
+    // CPU cycle 0   → H=0x00
+    // CPU cycle 196 → H=0x93  (196*342/228 = 294 = 0x93*2 → H=294/2=0x93)
+    // CPU cycle 197 → H=0xE9  (197*342/228 = 295 > 294 → discontinuity jump)
+    // CPU cycle 228 → wraps
+    const int h = hCycleCounter * 342 / 228;   // 0–341
+    if (h <= 0x93 * 2)
+        return static_cast<uint8_t>(h / 2);
+    const int offset = h - 0x93 * 2;
+    return static_cast<uint8_t>(0xE9 + offset / 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Blanking / wait-state queries
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool VDP::isHBlank() const
+{
+    // HBlank window: CPU cycles 166–226 within each scanline
+    return hCycleCounter >= 166 && hCycleCounter < 227;
+}
+
+bool VDP::isVBlank() const
+{
+    return currentLine >= SCREEN_HEIGHT;
+}
+
+int VDP::getWaitCycles() const
+{
+    if (isVBlank() || isHBlank()) return 0;
+    return 1;   // active display: VDP owns the bus, CPU is stalled 1 cycle
+}
+
+VDPSaveState VDP::captureState() const
+{
+    VDPSaveState s;
+    s.vram         = vram;
+    s.cram         = cram;
+    s.regs         = regs;
+    s.addrReg      = addrReg;
+    s.codeReg      = codeReg;
+    s.firstByte    = firstByte;
+    s.readBuffer   = readBuffer;
+    s.statusReg    = statusReg;
+    s.irqPending   = irqPending;
+    s.currentLine  = currentLine;
+    s.cycleCounter = cycleCounter;
+    s.lineCounter  = lineCounter;
+    s.vScroll      = vScroll;
+    s.hCycleCounter= hCycleCounter;
+    s.region       = static_cast<uint8_t>(region);
+    s.linesPerFrame= linesPerFrame;
+    return s;
+}
+
+void VDP::loadState(const VDPSaveState& s)
+{
+    vram         = s.vram;
+    cram         = s.cram;
+    regs         = s.regs;
+    addrReg      = s.addrReg;
+    codeReg      = s.codeReg;
+    firstByte    = s.firstByte;
+    readBuffer   = s.readBuffer;
+    statusReg    = s.statusReg;
+    irqPending   = s.irqPending;
+    currentLine  = s.currentLine;
+    cycleCounter = s.cycleCounter;
+    lineCounter  = s.lineCounter;
+    vScroll      = s.vScroll;
+    hCycleCounter= s.hCycleCounter;
+    region       = static_cast<Region>(s.region);
+    linesPerFrame= s.linesPerFrame;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,6 +277,11 @@ bool VDP::pollFrameReady()
 
 void VDP::tick(int cpuCycles)
 {
+    // Track H counter position within the current scanline
+    hCycleCounter += cpuCycles;
+    if (hCycleCounter >= CYCLES_PER_LINE)
+        hCycleCounter -= CYCLES_PER_LINE;
+
     cycleCounter += cpuCycles;
 
     while (cycleCounter >= CYCLES_PER_LINE) {
@@ -223,8 +301,9 @@ void VDP::advanceLine()
         renderScanline(currentLine);
     }
 
-    // Line interrupt counter — active during display area and the line after
-    if (currentLine <= SCREEN_HEIGHT) {
+    // Line interrupt counter — active during display area only.
+    // During VBlank the counter is reloaded from R10 each line (no IRQ).
+    if (currentLine < SCREEN_HEIGHT) {
         lineCounter--;
         if (lineCounter < 0) {
             lineCounter = regs[10];
@@ -232,6 +311,8 @@ void VDP::advanceLine()
                 irqPending = true;
             }
         }
+    } else {
+        lineCounter = regs[10];         // reload from R10 during VBlank
     }
 
     // VBlank starts on the first line after the active display
@@ -242,11 +323,6 @@ void VDP::advanceLine()
         }
         vScroll    = regs[9];           // latch vertical scroll for next frame
         frameReady = true;
-    }
-
-    // Outside active display: keep line counter reloaded
-    if (currentLine >= SCREEN_HEIGHT) {
-        lineCounter = regs[10];
     }
 
     currentLine++;

@@ -1,6 +1,8 @@
 // src/memory/mapper.cpp
 #include "memory/mapper.h"
+#include "system/save_state.h"
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -59,13 +61,13 @@ bool Mapper::loadROM(const std::vector<uint8_t>& data) {
 void Mapper::reset() {
     mapperRegs      = {0, 0, 1, 2};
     cartRamEnabled  = false;
-    applyMapping();
+    if (romPageCount > 0)
+        applyMapping();  // safe; skip if ROM not yet loaded
 }
 
 // ── applyMapping() ────────────────────────────────────────────────────────────
 void Mapper::applyMapping() {
-    if (romPageCount == 0)
-        return;  // no ROM loaded yet — leave pages[] uninitialised
+    assert(romPageCount > 0);  // must not be called before loadROM()
     for (int i = 0; i < 3; ++i) {
         std::size_t page = static_cast<std::size_t>(mapperRegs[i + 1]) % romPageCount;
         pages[static_cast<std::size_t>(i)] = &rom[page * PAGE_SIZE];
@@ -113,5 +115,24 @@ void Mapper::write(uint16_t addr, uint8_t val) {
 void Mapper::writeMapperReg(uint16_t addr, uint8_t val) {
     mapperRegs[addr & 3u] = val;
     cartRamEnabled = (mapperRegs[0] & 0x08u) != 0;
+    applyMapping();
+}
+
+MapperSaveState Mapper::captureState() const
+{
+    MapperSaveState s;
+    s.ram            = ram;
+    s.cartRam        = cartRam;
+    s.mapperRegs     = mapperRegs;
+    s.cartRamEnabled = cartRamEnabled;
+    return s;
+}
+
+void Mapper::loadState(const MapperSaveState& s)
+{
+    ram            = s.ram;
+    cartRam        = s.cartRam;
+    mapperRegs     = s.mapperRegs;
+    cartRamEnabled = s.cartRamEnabled;
     applyMapping();
 }

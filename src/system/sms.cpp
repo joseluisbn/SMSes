@@ -1,5 +1,7 @@
 // src/system/sms.cpp
 #include "system/sms.h"
+#include "system/save_state.h"
+#include <fstream>
 
 // ── Constructor ───────────────────────────────────────────────────────────────
 
@@ -91,13 +93,19 @@ void SMS::runFrame()
 
     while (cyclesRun < cyclesPerFrame) {
         // 1. Execute one CPU instruction
-        const int cycles = cpu.step();
+        int cycles = cpu.step();
+
+        // 2. Apply VDP wait state if the instruction accessed a VDP I/O port
+        //    during active display (not HBlank or VBlank).
+        if (bus.wasLastIOVDP())
+            cycles += vdp.getWaitCycles();
+
         cyclesRun += cycles;
 
-        // 2. Advance VDP by the same number of cycles
+        // 3. Advance VDP by the (possibly extended) cycle count
         vdp.tick(cycles);
 
-        // 3. Forward any pending VDP IRQ to the CPU
+        // 4. Forward any pending VDP IRQ to the CPU
         if (vdp.getIRQ()) {
             vdp.clearIRQ();
             cpu.irq();
@@ -113,6 +121,11 @@ void SMS::runFrame()
 void SMS::fillAudio(float* buffer, int numSamples)
 {
     psg.generateSamples(buffer, numSamples);
+}
+
+double SMS::targetFPS() const
+{
+    return (region == Region::NTSC) ? 59.9227 : 49.7016;
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
@@ -138,3 +151,48 @@ const VDP& SMS::getVDP() const { return vdp; }
 const PSG& SMS::getPSG() const { return psg; }
 const Bus& SMS::getBus() const { return bus; }
 const Z80& SMS::getCPU() const { return cpu; }
+
+// ── Save states ───────────────────────────────────────────────────────────────────────
+
+SaveState SMS::saveState() const
+{
+    SaveState s;
+    s.cpu    = cpu.getRegisters();
+    s.vdp    = vdp.captureState();
+    s.psg    = psg.captureState();
+    s.mapper = bus.getMapper().captureState();
+    s.region = static_cast<uint8_t>(region);
+    return s;
+}
+
+bool SMS::loadSaveState(const SaveState& s)
+{
+    if (s.magic   != SaveState::MAGIC)   return false;
+    if (s.version != SaveState::VERSION) return false;
+
+    cpu.loadRegisters(s.cpu);
+    vdp.loadState(s.vdp);
+    psg.loadState(s.psg);
+    bus.getMapper().loadState(s.mapper);
+    setRegion(static_cast<Region>(s.region));
+    return true;
+}
+
+bool SMS::saveToFile(const std::string& path) const
+{
+    const SaveState s = saveState();
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.write(reinterpret_cast<const char*>(&s), sizeof(s));
+    return f.good();
+}
+
+bool SMS::loadFromFile(const std::string& path)
+{
+    SaveState s;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.read(reinterpret_cast<char*>(&s), sizeof(s));
+    if (!f.good()) return false;
+    return loadSaveState(s);
+}

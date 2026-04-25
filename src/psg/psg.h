@@ -3,6 +3,9 @@
 
 #include <cstdint>
 
+// Forward-declare save-state struct to avoid circular include with save_state.h
+struct PSGSaveState;
+
 struct ToneChannel {
     uint16_t period  = 0;
     uint16_t counter = 0;
@@ -42,6 +45,10 @@ public:
 
     const ToneChannel&  getTone(int ch) const;
     const NoiseChannel& getNoise()      const;
+
+    // Save state
+    PSGSaveState captureState() const;
+    void         loadState(const PSGSaveState& s);
 
 private:
     double clockHz      = 3579545.0 / 16.0;

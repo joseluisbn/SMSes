@@ -36,8 +36,14 @@ public:
     // ── Debugger accessors ────────────────────────────────────────────────────
     const Mapper& getMapper() const;    IO&           getIO();    const IO&     getIO()     const;
 
+    // ── VDP wait-state detection ─────────────────────────────────────────────────
+    // Returns true (and clears the flag) if the last I/O access targeted
+    // VDP ports 0xBE or 0xBF, indicating a potential wait-state is needed.
+    bool wasLastIOVDP();
+
 private:
     Mapper mapper;
     IO     io;
-    bool   romLoaded = false;
+    bool   romLoaded      = false;
+    mutable bool lastAccessWasVDP = false;
 };

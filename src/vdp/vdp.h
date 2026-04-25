@@ -4,6 +4,9 @@
 #include <array>
 #include <cstdint>
 
+// Forward-declare save-state struct to avoid circular include with save_state.h
+struct VDPSaveState;
+
 // ---------------------------------------------------------------------------
 // Region selection — controls frame length, clock frequency, and VCounter
 // ---------------------------------------------------------------------------
@@ -78,6 +81,19 @@ public:
     uint8_t getHCounter() const;
 
     // -------------------------------------------------------------------------
+    // Wait-state / blanking queries (used by SMS system loop)
+    // -------------------------------------------------------------------------
+    bool isHBlank()       const;  // true during HBlank window (cycles 166–226)
+    bool isVBlank()       const;  // true when currentLine >= SCREEN_HEIGHT
+    int  getWaitCycles()  const;  // 1 during active display, 0 during blanks
+
+    // -------------------------------------------------------------------------
+    // Save state
+    // -------------------------------------------------------------------------
+    VDPSaveState captureState() const;
+    void         loadState(const VDPSaveState& s);
+
+    // -------------------------------------------------------------------------
     // Framebuffer access (consumed by Screen)
     // -------------------------------------------------------------------------
     const uint32_t* getFramebuffer() const;
@@ -125,6 +141,7 @@ private:
     // -------------------------------------------------------------------------
     int     currentLine  = 0;   // current scanline (0–261 NTSC)
     int     cycleCounter = 0;   // CPU cycles accumulated in the current line
+    int     hCycleCounter= 0;   // CPU cycles within current line for H counter
     int     lineCounter  = 0;   // R10 countdown — triggers line IRQ on underflow
     uint8_t vScroll      = 0;   // vertical scroll latched at frame start
 

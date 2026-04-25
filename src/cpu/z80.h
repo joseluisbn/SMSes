@@ -42,7 +42,8 @@ struct Z80Registers {
     uint8_t  I  = 0, R  = 0;        // Interrupt vector, Refresh counter
     bool     IFF1 = false, IFF2 = false;
     uint8_t  IM     = 0;             // Interrupt mode (0, 1, or 2)
-    bool     halted = false;
+    bool     halted  = false;
+    bool     eiDelay = false;         // EI delay: inhibit IRQ for one instruction
 };
 
 // ── Z80 CPU ──────────────────────────────────────────────────────────────────
@@ -55,11 +56,13 @@ public:
     void nmi();            // Trigger Non-Maskable Interrupt
     void irq();            // Trigger maskable IRQ (only if IFF1 is set)
 
-    const Z80Registers& getRegisters() const;
+    const Z80Registers& getRegisters()                  const;
+    void                loadRegisters(const Z80Registers& r); // save state restore
 
 private:
     Z80Registers regs;
     Bus&         bus;
+    bool         pendingIRQ = false;  // IRQ latched by irq(); consumed by step()
 
     // ── Memory access ──────────────────────────────────────────────────────
     uint8_t  read8(uint16_t addr);

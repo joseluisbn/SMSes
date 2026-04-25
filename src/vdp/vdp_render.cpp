@@ -64,14 +64,15 @@ void VDP::renderBackground(int line)
 
     // ── Vertical scroll (latched at VBlank, stored in vScroll) ───────────────
     // Mode 4 name table height is 28 rows = 224 lines; wrap with mod 224.
-    int effY = (line + static_cast<int>(vScroll)) % 224;
-    int row  = effY / 8;
-
-    // R0 bit 7: lock rows 24-27 of the name table (no vertical scroll)
-    if ((regs[0] & 0x80) && row >= 24) {
-        effY = line % 224;
-        row  = effY / 8;
+    // R0 bit 7: lock the bottom 4 rows (screen lines 160–191) from v-scrolling.
+    const bool vScrollLock = (regs[0] & 0x80) != 0;
+    int effY;
+    if (vScrollLock && line >= 160) {
+        effY = line;  // no vertical scroll for bottom 4 screen rows
+    } else {
+        effY = (line + static_cast<int>(vScroll)) % 224;
     }
+    const int row   = effY / 8;
     const int fineY = effY % 8;
 
     // ── Per-pixel horizontal rendering ───────────────────────────────────────

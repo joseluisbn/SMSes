@@ -70,12 +70,24 @@ void App::processEvents() {
             case SDL_EVENT_QUIT:
                 running = false;
                 break;
-            case SDL_EVENT_KEY_DOWN:
-                if (event.key.key == SDLK_ESCAPE)
+            case SDL_EVENT_KEY_DOWN: {
+                auto slotPath = [&](int slot) -> std::string {
+                    return "saves/slot_" + std::to_string(slot) + ".sms";
+                };
+                if (event.key.key == SDLK_ESCAPE) {
                     running = false;
-                else
+                } else if (event.key.key == SDLK_F5) {
+                    std::filesystem::create_directories("saves");
+                    if (sms.saveToFile(slotPath(currentSaveSlot)))
+                        std::fprintf(stderr, "Saved to slot %d\n", currentSaveSlot);
+                } else if (event.key.key == SDLK_F8) {
+                    if (sms.loadFromFile(slotPath(currentSaveSlot)))
+                        std::fprintf(stderr, "Loaded slot %d\n", currentSaveSlot);
+                } else {
                     updateJoy(event.key.key, true);
+                }
                 break;
+            }
             case SDL_EVENT_KEY_UP:
                 updateJoy(event.key.key, false);
                 break;
@@ -92,12 +104,9 @@ void App::processEvents() {
 void App::update() {
     if (!sms.isROMLoaded()) return;
 
-    // Breakpoint check — halt before executing if PC hits an enabled BP
-    if (debugger.shouldBreak()) return;
-
-    // Step mode — execute exactly one instruction per button press
+    // Step mode — bypass frame timing entirely
     if (debugger.isStepMode()) {
-        if (debugger.popStep()) {
+        if (!debugger.shouldBreak() && debugger.popStep()) {
             const int cycles = sms.getCPU().step();
             sms.getVDP().tick(cycles);
             if (sms.getVDP().getIRQ()) {
@@ -110,8 +119,34 @@ void App::update() {
         return;
     }
 
-    // Normal emulation: run one full frame
-    sms.runFrame();
+    // Compute elapsed time since last call
+    const uint64_t now     = SDL_GetTicks();
+    double         elapsed = static_cast<double>(now - lastFrameTime);
+    lastFrameTime = now;
+    elapsed = std::min(elapsed, 100.0);  // cap: prevent spiral of death after sleep/resume
+
+    // Turbo mode: run one frame immediately, no timing
+    if (uncapped) {
+        if (!debugger.shouldBreak())
+            sms.runFrame();
+        if (sms.getVDP().pollFrameReady())
+            screen.update(sms.getVDP().getFramebuffer());
+        return;
+    }
+
+    const double targetMs = 1000.0 / sms.targetFPS();
+    frameAccum += elapsed;
+
+    // Run at most 2 frames to avoid spiral of death on slowdown
+    int framesRun = 0;
+    while (frameAccum >= targetMs && framesRun < 2) {
+        if (!debugger.shouldBreak())
+            sms.runFrame();
+        frameAccum -= targetMs;
+        ++framesRun;
+    }
+
+    if (framesRun == 0) return;   // too early — skip framebuffer/audio push
 
     // Push completed framebuffer to screen texture
     if (sms.getVDP().pollFrameReady())
@@ -119,7 +154,7 @@ void App::update() {
 
     // Generate and queue audio for this frame
     const int samplesNeeded = static_cast<int>(
-        PSG::SAMPLE_RATE / (sms.getRegion() == Region::NTSC ? 59.92 : 49.70));
+        PSG::SAMPLE_RATE / sms.targetFPS());
 
     static std::array<float, 1024 * PSG::AUDIO_CHANNELS> audioBuffer;
     sms.fillAudio(audioBuffer.data(), samplesNeeded);
@@ -151,6 +186,17 @@ void App::handleMenuActions() {
     if (menubar.popRegionPAL()) {
         sms.setRegion(Region::PAL);
         SDL_SetWindowTitle(window, buildTitle().c_str());
+    }
+    if (menubar.popTurbo())
+        uncapped = !uncapped;
+    if (menubar.popSaveState()) {
+        currentSaveSlot = menubar.getSelectedSlot();
+        std::filesystem::create_directories("saves");
+        sms.saveToFile("saves/slot_" + std::to_string(currentSaveSlot) + ".sms");
+    }
+    if (menubar.popLoadState()) {
+        currentSaveSlot = menubar.getSelectedSlot();
+        sms.loadFromFile("saves/slot_" + std::to_string(currentSaveSlot) + ".sms");
     }
 }
 

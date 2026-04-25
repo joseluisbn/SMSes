@@ -47,6 +47,14 @@ private:
     uint8_t                joypad1State = 0;
     uint8_t                joypad2State = 0;
 
+    // Frame timing
+    uint64_t               lastFrameTime = 0;    // SDL_GetTicks64() at last frame
+    double                 frameAccum    = 0.0;  // accumulated time debt in ms
+    bool                   uncapped      = false; // turbo mode
+
+    // Save states
+    int                    currentSaveSlot = 0;
+
     static constexpr int   AUDIO_BUFFER_SAMPLES = 512;
     SDL_AudioDeviceID      audioDevice  = 0;
     SDL_AudioStream*       audioStream  = nullptr;

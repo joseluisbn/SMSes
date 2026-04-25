@@ -1,5 +1,6 @@
 // src/psg/psg.cpp
 #include "psg/psg.h"
+#include "system/save_state.h"
 
 PSG::PSG()
 {
@@ -49,7 +50,8 @@ void PSG::setPeriodLow(int ch, uint8_t data)
     if (ch < 3) {
         tone[ch].period = (tone[ch].period & 0x3F0) | (data & 0x0F);
     } else {
-        noise.control = data & 0x07;
+        noise.control  = data & 0x07;
+        noise.shiftReg = 0x8000;  // reset LFSR when noise control changes
         updateNoisePeriod();
     }
 }
@@ -177,4 +179,30 @@ const ToneChannel& PSG::getTone(int ch) const
 const NoiseChannel& PSG::getNoise() const
 {
     return noise;
+}
+
+PSGSaveState PSG::captureState() const
+{
+    PSGSaveState s;
+    s.tone[0]         = tone[0];
+    s.tone[1]         = tone[1];
+    s.tone[2]         = tone[2];
+    s.noise           = noise;
+    s.latchedChannel  = latchedChannel;
+    s.latchedIsVolume = latchedIsVolume;
+    s.clockHz         = clockHz;
+    return s;
+}
+
+void PSG::loadState(const PSGSaveState& s)
+{
+    tone[0]         = s.tone[0];
+    tone[1]         = s.tone[1];
+    tone[2]         = s.tone[2];
+    noise           = s.noise;
+    latchedChannel  = s.latchedChannel;
+    latchedIsVolume = s.latchedIsVolume;
+    clockHz         = s.clockHz;
+    clockPeriod     = (clockHz > 0.0) ? 1.0 / clockHz : 0.0;
+    accumulator     = 0.0;  // reset to avoid audio glitch on restore
 }

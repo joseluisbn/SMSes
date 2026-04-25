@@ -28,6 +28,8 @@ void Z80::reset() {
     regs.IFF2   = false;
     regs.IM     = 0;
     regs.halted = false;
+    regs.eiDelay = false;
+    pendingIRQ  = false;
 }
 
 // ── Memory helpers ────────────────────────────────────────────────────────────
@@ -215,22 +217,40 @@ int Z80::step() {
     if (regs.halted)
         return 4;
 
+    // EI delay: the instruction immediately after EI is non-interruptible.
+    const bool allowIRQ = !regs.eiDelay;
+    if (regs.eiDelay)
+        regs.eiDelay = false;
+
     uint8_t op = fetch8();
+    int cycles;
     switch (op) {
-        case 0xCB: return executeCB(fetch8());
-        case 0xED: return executeED(fetch8());
-        case 0xDD: return executeDD(fetch8());
-        case 0xFD: return executeFD(fetch8());
-        default:   return executeMain(op);
+        case 0xCB: cycles = executeCB(fetch8()); break;
+        case 0xED: cycles = executeED(fetch8()); break;
+        case 0xDD: cycles = executeDD(fetch8()); break;
+        case 0xFD: cycles = executeFD(fetch8()); break;
+        default:   cycles = executeMain(op);     break;
     }
+
+    // Process deferred IRQ — skipped if this instruction was guarded by EI delay.
+    if (allowIRQ && pendingIRQ) {
+        pendingIRQ = false;
+        handleIRQ();   // handleIRQ() is a no-op if IFF1 is false
+    }
+
+    return cycles;
 }
 
 // ── nmi() / irq() ─────────────────────────────────────────────────────────────
 void Z80::nmi() { handleNMI(); }
-void Z80::irq() { handleIRQ(); }
+void Z80::irq() { pendingIRQ = true; }  // deferred: step() will call handleIRQ()
 
-// ── getRegisters() ────────────────────────────────────────────────────────────
-const Z80Registers& Z80::getRegisters() const { return regs; }
+// ── getRegisters() / loadRegisters() ─────────────────────────────────────────
+const Z80Registers& Z80::getRegisters()                  const { return regs; }
+void Z80::loadRegisters(const Z80Registers& r) {
+    regs       = r;
+    pendingIRQ = false;  // clear deferred IRQ to prevent spurious interrupt after load
+}
 
 // ── Opcode executors implemented in their respective files ───────────────────
 // executeMain  → z80_opcodes.cpp

@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <vector>
 
+// Forward-declare save-state struct to avoid circular include with save_state.h
+struct MapperSaveState;
+
 class Mapper {
 public:
     static constexpr uint16_t PAGE_SIZE     = 0x4000;  // 16 KB per slot
@@ -27,6 +30,12 @@ public:
     // Direct pointer to system RAM (used by Bus for the 0xC000–0xFFFF region).
     uint8_t*       getRamPtr()       { return ram.data(); }
     const uint8_t* getRamPtr() const { return ram.data(); }
+
+    // Save state
+    MapperSaveState captureState() const;
+    void            loadState(const MapperSaveState& s);
+
+    bool loadROM(const std::vector<uint8_t>& data);
 
 private:
     std::vector<uint8_t>              rom;              // full ROM image

@@ -1,5 +1,6 @@
 // src/ui/menubar.cpp
 #include "ui/menubar.h"
+#include <algorithm>
 #include <imgui.h>
 
 void Menubar::draw() {
@@ -10,6 +11,16 @@ void Menubar::draw() {
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Open ROM..."))
             actionOpenRom = true;
+        ImGui::Separator();
+        ImGui::Text("Save Slot:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(40);
+        ImGui::InputInt("##slot", &selectedSlot, 1, 1);
+        selectedSlot = std::clamp(selectedSlot, 0, 9);
+        if (ImGui::MenuItem("Save State  (F5)"))
+            actionSaveState = true;
+        if (ImGui::MenuItem("Load State  (F8)"))
+            actionLoadState = true;
         ImGui::Separator();
         if (ImGui::MenuItem("Exit"))
             actionExit = true;
@@ -61,8 +72,9 @@ void Menubar::draw() {
         if (ImGui::MenuItem("Scale 2x"))
             actionScale2x = true;
         if (ImGui::MenuItem("Scale 3x"))
-            actionScale3x = true;
-        ImGui::EndMenu();
+            actionScale3x = true;        ImGui::Separator();
+        if (ImGui::MenuItem("Turbo (uncapped)", nullptr, turboEnabled))
+            actionTurbo = true;        ImGui::EndMenu();
     }
 
     ImGui::EndMainMenuBar();
@@ -85,5 +97,10 @@ bool Menubar::popScale2x() { bool v = actionScale2x; actionScale2x = false; retu
 bool Menubar::popScale3x() { bool v = actionScale3x; actionScale3x = false; return v; }
 bool Menubar::popRegionNTSC() { bool v = actionRegionNTSC; actionRegionNTSC = false; return v; }
 bool Menubar::popRegionPAL()  { bool v = actionRegionPAL;  actionRegionPAL  = false; return v; }
+bool Menubar::popTurbo()      { bool v = actionTurbo; actionTurbo = false;
+                                 if (v) turboEnabled = !turboEnabled; return v; }
+bool Menubar::popSaveState()  { bool v = actionSaveState; actionSaveState = false; return v; }
+bool Menubar::popLoadState()  { bool v = actionLoadState; actionLoadState = false; return v; }
+int  Menubar::getSelectedSlot() const { return selectedSlot; }
 
 Region Menubar::getSelectedRegion() const { return selectedRegion; }
