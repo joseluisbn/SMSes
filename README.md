@@ -1,6 +1,6 @@
 # SMS Emulator
 
-A work-in-progress Sega Master System emulator written in C++23.
+A Sega Master System emulator written in C++23.
 
 ## Status
 
@@ -9,19 +9,46 @@ A work-in-progress Sega Master System emulator written in C++23.
 | 1 | SDL3 + ImGui UI shell | ✅ Done |
 | 2 | Z80 CPU (full opcode tables) | ✅ Done |
 | 3 | Memory bus, Sega mapper, I/O controller | ✅ Done |
-| 4 | VDP (video display processor) | ✅ Done |
-| 5 | PSG (SN76489 sound) | ✅ Done |
-| 6 | System integration & ROM execution | ✅ Done |
-| 7 | Timing, Accuracy, Save States | ✅ Done |
+| 4 | VDP 315-5124 | ✅ Done |
+| 5 | PSG SN76489 | ✅ Done |
+| 6 | System integration, ROM execution, debugger | ✅ Done |
+| 7 | Timing accuracy, save states, ROM compatibility fixes | ✅ Done |
 | 8 | Testing, bugfixes | ⏳ Planned |
 
 ## Features
 
-- Full Z80 instruction set including undocumented opcodes (CB, ED, DD/FD, DDCB/FDCB prefixes)
-- Sega mapper with 16 KB bank switching, cartridge RAM support
-- Active-low joypad input with drag-and-drop ROM loading
-- ImGui-based menu bar (scale control, ROM open, reset)
-- GoogleTest unit tests for the CPU
+### Emulation
+- Full Z80 instruction set including all undocumented opcodes (CB, ED, DD/FD, DDCB/FDCB prefixes) and undocumented flags (F3/F5)
+- EI instruction delay: interrupts are suppressed for one instruction after EI, matching hardware behaviour
+- VDP 315-5124: Mode 4 background, sprites, NTSC/PAL timing, H/V counters, line interrupts, vertical and horizontal scroll with per-row lock (R0 bits 6–7)
+- PSG SN76489: 3 tone channels + noise channel with LFSR, SDL3 audio stream output
+- Sega mapper: 16 KB bank switching, cartridge RAM support, correct modulo handling for ROMs smaller than 3 pages (16 KB / 32 KB)
+- Cycle-accurate VDP wait states during active display; accumulator-based frame timing capped at 100 ms to prevent spiral of death after sleep/resume
+
+### User interface
+- Drag-and-drop ROM loading; auto-detects NTSC/PAL from header
+- 1×/2×/3× display scale
+- Turbo (uncapped) mode
+- Save states: 10 slots, F5 to save, F8 to load; slot selector and menu items in the File menu
+- Save files written to `saves/slot_N.sms` relative to the working directory
+
+### Debugger (ImGui panels, toggle from Debug menu)
+- **CPU Registers** — live Z80 register and flags view, step mode
+- **Disassembler** — Z80 disassembly with breakpoint support
+- **Memory Viewer** — RAM, VRAM and ROM hex views
+- **VDP Viewer** — register dump, palette, nametable info
+- **PSG Monitor** — per-channel waveform history and volume meters
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | D-pad |
+| Z | Button 1 |
+| X | Button 2 |
+| F5 | Save state (current slot) |
+| F8 | Load state (current slot) |
+| Escape | Quit |
 
 ## Requirements
 
@@ -56,7 +83,7 @@ Set the `VCPKG_ROOT` environment variable to the vcpkg directory.
 ### 2. Configure & build
 
 ```sh
-# Debug build (Ninja + vcpkg toolchain wired in via CMakePresets.json)
+# Debug build
 cmake --preset debug
 cmake --build --preset debug
 
@@ -68,7 +95,7 @@ cmake --build --preset release
 ### 3. Run the emulator
 
 ```sh
-./build/debug/sms-emulator
+./build/debug/sms-emulator      # Windows: build\debug\sms-emulator.exe
 ```
 
 Drag and drop a `.sms` ROM file onto the window to load it.
@@ -95,13 +122,30 @@ SMSes/
 │   │   ├── bus.h / bus.cpp              — System bus (owns Mapper + IO)
 │   │   ├── mapper.h / mapper.cpp        — Sega bank mapper
 │   ├── io/
-│   │   ├── io.h / io.cpp                — I/O port controller (joypad, VDP, PSG)
+│   │   └── io.h / io.cpp                — I/O port controller (joypad, VDP, PSG)
+│   ├── vdp/
+│   │   ├── vdp.h / vdp.cpp              — VDP registers, timing, counters
+│   │   └── vdp_render.cpp               — Mode 4 background and sprite renderer
+│   ├── psg/
+│   │   └── psg.h / psg.cpp              — SN76489 tone/noise synthesis
+│   ├── system/
+│   │   ├── sms.h / sms.cpp              — Top-level system orchestrator
+│   │   └── save_state.h                 — POD save-state structs (binary serialisable)
 │   └── ui/
-│       ├── app.h / app.cpp              — Main application loop
-│       ├── menubar.h / menubar.cpp      — ImGui menu bar
-│       └── screen.h / screen.cpp        — SDL3 texture display
+│       ├── app.h / app.cpp              — Main application loop, frame timing, audio
+│       ├── menubar.h / menubar.cpp      — ImGui menu bar (file, emulation, debug, view)
+│       ├── screen.h / screen.cpp        — SDL3 texture display
+│       └── debugger/
+│           ├── debugger.h / debugger.cpp       — Debugger shell
+│           ├── cpu_panel.h / cpu_panel.cpp     — Z80 registers + step mode
+│           ├── disasm_panel.h / disasm_panel.cpp — Disassembler + breakpoints
+│           ├── memory_panel.h / memory_panel.cpp — Hex viewer (RAM/VRAM/ROM)
+│           ├── vdp_panel.h / vdp_panel.cpp     — VDP register viewer
+│           └── psg_panel.h / psg_panel.cpp     — PSG channel monitor
 ├── tests/
-│   └── test_z80.cpp                     — Z80 unit tests (GoogleTest)
+│   ├── mock_bus.h                       — Minimal Bus stub for unit tests
+│   ├── test_z80.cpp                     — Z80 unit tests (GoogleTest)
+│   └── test_vdp.cpp                     — VDP unit tests (GoogleTest)
 ├── CMakeLists.txt
 ├── CMakePresets.json
 └── vcpkg.json
@@ -109,10 +153,25 @@ SMSes/
 
 ## CPU Implementation Notes
 
-- `Flags` is a union with named bitfields (`S`, `Z`, `H`, `PV`, `N`, `C`) and a `uint8_t raw` member.
+- `Flags` is a union with named bitfields (`S`, `Z`, `H`, `PV`, `N`, `C`) and a `uint8_t raw` member for bulk access.
 - All undocumented flags (F3/F5) are updated per the Z80 undocumented behaviour specification.
 - DD/FD prefixes share a single `executeIndexed()` handler; DDCB/FDCB share `executeIndexedCB()`.
-- `Bus` is injected into the Z80 at construction — no global state.
+- `Bus` is injected by reference into the Z80 at construction — no global state.
+- EI sets `eiDelay = true`; `step()` checks this flag before allowing IRQ acknowledgement, ensuring the instruction immediately after EI is non-interruptible.
+
+## Save State Format
+
+Save states are raw binary dumps of a fixed-layout `SaveState` struct (defined in `system/save_state.h`):
+
+| Field | Size | Notes |
+|-------|------|-------|
+| Magic (`0x534D5353`) | 4 B | ASCII "SMSS" |
+| Version (`1`) | 4 B | Bumped on breaking layout changes |
+| Z80 registers | — | All main, shadow, index, special regs |
+| VDP state | ~16.4 KB | VRAM, CRAM, registers, counters |
+| PSG state | — | Tone channels, noise channel, latch |
+| Mapper state | ~16 KB | RAM, cart RAM, bank registers |
+| Region | 1 B | `0` = NTSC, `1` = PAL |
 
 ## Memory Map
 
@@ -131,8 +190,8 @@ SMSes/
 | Port | Direction | Description |
 |------|-----------|-------------|
 | `0x3F` | Write | I/O control register |
-| `0x40` | Read | VDP V-counter |
-| `0x41` | Read | VDP H-counter |
+| `0x7E` | Read | VDP V-counter |
+| `0x7F` | Read | VDP H-counter |
 | `0x7E–0x7F` | Write | PSG data |
 | `0xBE` | Read/Write | VDP data port |
 | `0xBF` | Read/Write | VDP control port |
