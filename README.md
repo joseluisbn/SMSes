@@ -1,5 +1,12 @@
 # SMS Emulator
 
+![Build](https://img.shields.io/badge/build-CMake%20%2B%20Ninja-green)
+![Status](https://img.shields.io/badge/status-active-success)
+![Last commit](https://img.shields.io/github/last-commit/joseluisbn/SMSes)
+![C++](https://img.shields.io/badge/C%2B%2B-23-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-informational)
+
 A Sega Master System emulator written in C++23.
 
 ## Status
